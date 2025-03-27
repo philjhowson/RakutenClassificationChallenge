@@ -9,3 +9,6 @@ reports/
 streamlit/
 streamlitApp/
 venv/
+
+!src/data
+!src/models
