@@ -1,0 +1,11 @@
+__pycache__/
+data/
+final_notebooks/
+metrics/
+models/
+notebooks/
+references/
+reports/
+streamlit/
+streamlitApp/
+venv/
