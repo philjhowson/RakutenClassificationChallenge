@@ -30,46 +30,38 @@ metric_list = [textfunc.base_name_func(metric_func).split( '_')[1] for metric_fu
 print( 'start with filters into the columns' )
 for i, column in enumerate(column_list):
     for j, (filtered_column, filter_func) in enumerate(zip(filtered_column_list, filter_func_list) ):
-        # only do this, if the column is not the unfiltered first colum
         new_column = str()
         old_column = str()
-        # condition for first iteration
+
         if filtered_column == filtered_column_list[0]:
             old_column = column
             new_column = column + '_' + filtered_column
-        # condition for second iteration
+
         else:
             old_column = column + '_' + filtered_column_list[ j-1 ]
             new_column = column + '_' + filtered_column   
-        # only make a filter, if it is not the first iteration
-        #if old_column != new_column:
-        #print( column, ': filtering: ', old_column, ' with filter: ', filtered_column, ' to target:' , new_column)
+
         df.loc[:,new_column] = df.loc[:,old_column].apply( filter_func )
 
-        # add a column that has boolean values if the filter altered the string
         new_column_altered = new_column + '_altered'
         df.loc[:,new_column_altered] = (df[new_column] != df[old_column])
 
-        # add a metric of length and word count for each new filtered column
         for k, (metric, metric_func) in enumerate(zip( metric_list, metric_func_list ) ):
             new_column_metric = new_column + '_' + metric
             df.loc[:,new_column_metric] = df.loc[:,new_column].apply( metric_func )
 
-        # count the duplicates for each new filter
+
         new_column_metric = new_column + '_' + 'duplicates'
         old_column_metric = old_column + '_' + 'duplicates'
+        
         if filtered_column == 'nofilter':
-            #df.loc[:,new_column_metric] = df[ (df[column].duplicated(keep=False)) ].shape[0]
-            #the '' filter is needed, since there are many NaNs in description which where replaces by ''
             df.loc[:,new_column_metric] = df[column][ df[column] != '' ][df[column][ df[column] != '' ].duplicated(keep=False)].shape[0]
         else:
-            #df.loc[:,new_column_metric] = df[ (df[new_column].duplicated(keep=False)) ].shape[0]
-            #the '' filter is needed, since there are many NaNs in description which where replaces by ''
             df.loc[:,new_column_metric] = df[new_column][ df[new_column] != '' ][df[new_column][ df[new_column] != '' ].duplicated(keep=False)].shape[0]
 
 print('Finished with filters into the columns')
 
-print('Start apply stacked filters')
+print('Start applying stacked filters')
 
 df.loc[:, 'designation_filtered'] = df.loc[:, 'designation'].apply(
     lambda text: textfunc.filter_stacked(text, filter_func_list))
@@ -78,8 +70,6 @@ df.loc[:,'description_filtered'] = df.loc[:,'description'].apply(
 
 print('Done filtering')
 
-df.to_csv('data/processed/filtered.csv', index = False)
-
 metric_list_all = metric_list + ['altered', 'duplicates']
 row = len(column_list)
 col = len(metric_list_all)
@@ -87,13 +77,12 @@ col = len(metric_list_all)
 fig, axs = plt.subplots(row, col, constrained_layout = True, figsize = (10,8))
 
 for i, column in enumerate( column_list ):
-    # put either 'designation' or 'description' as start to the loop
-    #filter_func_list_column = [column_func_list[i]] + filter_func_list
+
     filter_func_list_column = filter_func_list
-    #filtered_column_list_column = [column_list[i]] + filtered_column_list
+
     filtered_column_list_column = filtered_column_list
     
-    #for j, filtered_column in enumerate( filtered_column_list_column ):
+
     for j, metric in enumerate(metric_list_all):
 
         plot_column = []
@@ -109,7 +98,6 @@ for i, column in enumerate( column_list ):
             axs[i,j].plot( filtered_column_list_column,df[plot_column].sum().values, label = 'count')
         else:
             axs[i,j].plot( filtered_column_list_column,df[plot_column].max().values, label = 'count')
-                 #df[[str_input_channels[channel_name][m][channel_type] for m in str_input_channels[channel_name].keys()]].max().values, label='max' )
 
         for tick in axs[i,j].get_xticklabels():
             tick.set_rotation(75)
@@ -148,10 +136,9 @@ sns.barplot(duplicates, color = 'purple')
 plt.tight_layout()
 plt.savefig('images/description_duplicates_after_filter.png')
 
-df_filtered = pd.read_csv('data/processed/filtered.csv', encoding = 'utf8')
 df_filtered = df_filtered[['designation_filtered', 'description_filtered', 'image_name', 'initial_index', 'prdtypecode']].copy()
 df_translated = textfunc.detect_and_translate_offline(df_filtered)
-df_translated.to_csv('data/processed/translated_text.csv', index = False)
+df_translated.to_parquet('data/processed/translated_text.parquet')
 
 fig, ax = plt.subplots(1, 2, figsize = (20, 10))
 

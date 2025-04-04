@@ -90,7 +90,7 @@ def train_densenet():
     history = {'loss' : [], 'f1' : [], 'gradient' : [],
                'val_loss' : [], 'val_f1' : []}
 
-    print(f"DenseNet169 loaded and ready to begin training.")
+    print('DenseNet169 loaded and ready to begin training.')
 
     for epoch in range(epochs):
 
