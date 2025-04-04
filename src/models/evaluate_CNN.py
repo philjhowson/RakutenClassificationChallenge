@@ -11,18 +11,23 @@ from PIL import Image
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import json
+
 
 def resize_image(img):
     return resizing(img, 224)
 
 def evaluate_model():
-
+    
     test = pd.read_csv('data/processed/test_CNN.csv')
     image_labels = test['target'].copy()
     unique_labels = sorted(set(test['target']))
     label_to_index = {label: idx for idx, label in enumerate(unique_labels)}
     test['target'] = test['target'].map(label_to_index)
-    
+
+    with open('data/processed/test_label_dictionary.json', 'w') as f:
+        json.dump(label_to_index, f)
+
     img_dir = 'data/images/image_train/'
 
     test_transform = transforms.Compose([
@@ -90,7 +95,8 @@ def evaluate_model():
         yval = round(bar.get_height(), 3)
         plt.text(bar.get_x() + bar.get_width() / 2, yval - 0.05, str(yval),
                  ha = 'center', va = 'bottom', color = 'white', fontweight = 'bold')
-    
+
+    plt.ylim(0, 1)
     plt.ylabel('F1-Score')
     plt.title('Training, Validation, and Test F1-Scores')
     plt.tight_layout()

@@ -2,15 +2,13 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 import torch.optim as optim
-from transformers import RobertaTokenizer, RobertaForSequenceClassification
+from transformers import RobertaForSequenceClassification
 from sklearn.utils.class_weight import compute_class_weight
 from sklearn.metrics import f1_score
 from datasets import Dataset
-from text_custom_functions import EarlyStopping
+from text_custom_functions import EarlyStopping, tokenize_function, safe_saver
 import pandas as pd
 import numpy as np
-import pickle
-import gc
 
 def train_roBERTa():
 
@@ -19,23 +17,17 @@ def train_roBERTa():
 
     train_dataset = Dataset.from_pandas(training)
     validation_dataset = Dataset.from_pandas(validation)
-    
-    tokenizer = RobertaTokenizer.from_pretrained("roberta-base")
-
-    def tokenize_function(dataset):
-        return tokenizer(dataset['designation_filtered'], padding = "max_length",
-                         truncation = True, max_length = 128)
 
     train_dataset = train_dataset.map(tokenize_function, batched = True, num_proc = 4)
     validation_dataset = validation_dataset.map(tokenize_function, batched = True, num_proc = 4)
-    train_dataset.set_format(type = "torch", columns = ["input_ids", "attention_mask", "labels"])
-    validation_dataset.set_format(type = "torch", columns = ["input_ids", "attention_mask", "labels"])
+    train_dataset.set_format(type = 'torch', columns = ['input_ids', 'attention_mask', 'labels'])
+    validation_dataset.set_format(type = 'torch', columns = ['input_ids', 'attention_mask', 'labels'])
     training_loader = DataLoader(train_dataset, batch_size = 64, shuffle = True)
     validation_loader = DataLoader(validation_dataset, batch_size = 64, shuffle = False)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    model = RobertaForSequenceClassification.from_pretrained("roberta-base",  num_labels = 27)
+    model = RobertaForSequenceClassification.from_pretrained('roberta-base',  num_labels = 27)
 
     for i, layer in enumerate(model.roberta.encoder.layer):
         if i < len(model.roberta.encoder.layer) - 5:
@@ -160,8 +152,7 @@ def train_roBERTa():
     model.load_state_dict(early_stopping.best_f1_model)
     torch.save(model.state_dict(), f'models/roBERTa_model_weights.pth')
 
-    with open(f'metrics/roBERTa_performance.pkl', 'wb') as f:
-        pickle.dump(history, f)
+    safe_saver(history, 'metrics/roBERTa_performance.pkl')
 
     print('roBERTa model and training metrics saved.')
 

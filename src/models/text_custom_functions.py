@@ -1,3 +1,7 @@
+from transformers import RobertaTokenizer
+import pickle
+import os
+
 class EarlyStopping:
     def __init__(self, patience = 6):
         self.patience = patience
@@ -22,3 +26,25 @@ class EarlyStopping:
                 return True
                     
         return False
+
+tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
+
+def tokenize_function(dataset):
+    return tokenizer(dataset['designation_filtered'], padding = 'max_length',
+                     truncation = True, max_length = 128)
+
+def safe_loader(path):
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"No file found at: {path}")
+    if os.path.getsize(path) == 0:
+        raise EOFError(f"File is empty at: {path}")
+
+    with open(path, 'rb') as f:
+        item = pickle.load(f)
+
+    return item
+
+def safe_saver(item, path):
+    os.makedirs(os.path.dirname(path), exist_ok = True)
+    with open(path, 'wb') as f:
+        pickle.dump(item, f)
