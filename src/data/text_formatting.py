@@ -10,7 +10,7 @@ def filter_dataset():
         test_indices = pickle.load(f)
 
     data = pd.read_parquet('data/processed/translated_text.parquet')
-    data = data[['designation_translation', 'prdtypecode']]
+    data = data[['designation_translation', 'prdtypecode', 'image_name']]
 
     spacy.require_gpu()
 
@@ -32,6 +32,8 @@ def filter_dataset():
                '¿': '?'}
 
     data['designation_filtered'] = data['designation_filtered'].replace(hexcode, regex = True)
+    data.to_parquet('data/processed/formatted_text.parquet')
+    data.drop(columns = ['image_name'], inplace = True)
 
     test_data = data.iloc[test_indices]
     train_mask = ~data.index.isin(test_indices)
