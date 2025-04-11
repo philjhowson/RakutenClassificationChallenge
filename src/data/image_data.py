@@ -3,12 +3,11 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.utils import resample
 from sklearn.manifold import LocallyLinearEmbedding
-from sklearn.model_selection import train_test_split
 from PIL import Image
 import numpy as np
 from sklearn.manifold import LocallyLinearEmbedding
 from image_functions import plot_components, compute_image_hash, image_processing
-import pickle
+from text_functions import safe_loader
 
 def format_data():
 
@@ -37,6 +36,7 @@ def format_data():
 
     plt.tight_layout();
     plt.savefig('images/image_samples.png')
+
 
     """
     Resamples 30 images of each datapoint for LLE - a dimension reduction technique - that can help
@@ -153,6 +153,7 @@ def format_data():
     """
     just selecting a small amount of the dataframe for plotting, and demonstration of the function.
     """
+
     small_data = resample(data, replace = False, n_samples = 9)
     results = small_data.apply(image_processing, axis = 1)
     df = pd.DataFrame(results)
@@ -200,45 +201,35 @@ def format_data():
     plt.tight_layout()
     plt.savefig('images/reshaped_examples.png')
 
-
-    temp_indices, test_indices = train_test_split(range(len(data)), test_size = 0.1,
-                                                   stratify = data['target'], random_state = 42)
-
     """
-    We want the test data for the text and image NNs to be the same, so we first,
-    we remove all the images that have duplicates across mutliple categories as that
-    could induce training difficulties. Then, we remove duplicates that have a single
-    category as there is no purpose to duplicates. Then we save the test_indices for use
-    when creating the text train/test split.
+    loads in the train, val, test indices for splitting and then drops the irrelevant
+    columns from each dataset and saves them for model training.
     """
 
+    train_indices = safe_loader('data/processed/train_indices.pkl')
+    val_indices = safe_loader('data/processed/val_indices.pkl')
+    test_indices = safe_loader('data/processed/test_indices.pkl')
+
+    train_data = data.iloc[train_indices]
+    val_data = data.iloc[val_indices]
     test_data = data.iloc[test_indices]
-    test_data = test_data[~test_data['sha256'].isin(dupes['sha256'])]
-    test_data = test_data.drop_duplicates(subset = ['sha256']).reset_index()
-    test_indices = test_data['index'].to_list()
 
-    with open('data/processed/test_indices.pkl', 'wb') as f:
-        pickle.dump(test_indices, f)
+    split_data = {'train' : train_data,
+                  'val' : val_data,
+                  'test' : test_data}
 
-    test_data.drop(columns = ['index', 'sha256'], inplace = True)
-    test_data.to_csv('data/processed/test_CNN.csv', index = False)
+    splits = {}
 
-    """
-    We want to remove duplicates from the temp indices as well, so that it doesn't cause
-    issues with training and validation.
-    """
+    for split in split_data.keys():
+        df = split_data[split]
+        df = df[~df['sha256'].isin(dupes['sha256'])]
+        df = df.drop_duplicates(subset=['sha256'])
+        df = df.drop(columns=['sha256'])
+        splits[split] = df
 
-    train_data = data.iloc[temp_indices]
-    train_data = train_data[~train_data['sha256'].isin(dupes['sha256'])]
-    train_data = train_data.drop_duplicates(subset = ['sha256']).reset_index(drop = True)
-    train_data.drop(columns = ['sha256'], inplace = True)
-
-    train, val = train_test_split(train_data, test_size = 0.1,
-                                  stratify = train_data['target'],
-                                  random_state = 42)
-
-    train.to_csv('data/processed/train_CNN.csv', index = False)
-    val.to_csv('data/processed/validation_CNN.csv', index = False)
+    splits['train'].to_csv('data/processed/train_CNN.csv', index = False)
+    splits['val'].to_csv('data/processed/validation_CNN.csv', index = False) 
+    splits['test'].to_csv('data/processed/test_CNN.csv', index = False)   
 
 if __name__ == '__main__':
     format_data()

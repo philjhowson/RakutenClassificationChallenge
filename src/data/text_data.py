@@ -139,6 +139,7 @@ def format_data():
     plt.savefig('images/description_duplicates_after_filter.png')
 
     df_filtered = df_filtered[['designation_filtered', 'description_filtered', 'image_name', 'initial_index', 'prdtypecode']].copy()
+    df_filtered.to_parquet('data/processed/untranslated_text.parquet')
     df_translated = textfunc.detect_and_translate_offline(df_filtered)
     df_translated.to_parquet('data/processed/translated_text.parquet')
 

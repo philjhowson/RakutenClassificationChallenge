@@ -1,13 +1,10 @@
 from sklearn.model_selection import train_test_split
 import pandas as pd
+from text_functions import safe_loader
 import spacy
 import pickle
 
-
 def filter_dataset():
-
-    with open('data/processed/test_indices.pkl', 'rb') as f:
-        test_indices = pickle.load(f)
 
     data = pd.read_parquet('data/processed/translated_text.parquet')
     data = data[['designation_translation', 'prdtypecode', 'image_name']]
@@ -35,16 +32,29 @@ def filter_dataset():
     data.to_parquet('data/processed/formatted_text.parquet')
     data.drop(columns = ['image_name'], inplace = True)
 
-    test_data = data.iloc[test_indices]
-    train_mask = ~data.index.isin(test_indices)
-    data = data.iloc[train_mask]
+    train_indices = safe_loader('data/processed/train_indices.pkl')
+    val_indices = safe_loader('data/processed/val_indices.pkl')
+    test_indices = safe_loader('data/processed/test_indices.pkl')
 
-    test_data.to_csv('data/processed/text_test_set.csv', index = False)
+    train = data.iloc[train_indices]
+    val = data.iloc[val_indices]
+    test = data.iloc[test_indices]
 
-    training, validation = train_test_split(data, test_size = 0.3, random_state = 42)
+    split_data = {'train' : train,
+                  'val': val,
+                  'test': test}
 
-    training.to_csv('data/processed/text_training_set.csv', index = False)
-    validation.to_csv('data/processed/text_validation_set.csv', index = False)
+    splits = {}
+
+    for split in split_data.keys():
+        df = split_data[split]
+        df = df.drop_duplicates(subset = ['designation_filtered'])
+        splits[split] = df
+        
+    
+    splits['train'].to_csv('data/processed/train_text.csv', index = False)
+    splits['val'].to_csv('data/processed/validation_text.csv', index = False)
+    splits['test'].to_csv('data/processed/test_text.csv', index = False)
 
 if __name__ == "__main__":
     filter_dataset()

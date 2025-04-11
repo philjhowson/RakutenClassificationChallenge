@@ -12,8 +12,8 @@ import numpy as np
 
 def train_roBERTa():
 
-    training = pd.read_csv('data/processed/text_training_set.csv')
-    validation = pd.read_csv('data/processed/text_validation_set.csv')
+    training = pd.read_csv('data/processed/train_text.csv')
+    validation = pd.read_csv('data/processed/validation_text.csv')
 
     train_dataset = Dataset.from_pandas(training)
     validation_dataset = Dataset.from_pandas(validation)
@@ -22,8 +22,8 @@ def train_roBERTa():
     validation_dataset = validation_dataset.map(tokenize_function, batched = True, num_proc = 4)
     train_dataset.set_format(type = 'torch', columns = ['input_ids', 'attention_mask', 'labels'])
     validation_dataset.set_format(type = 'torch', columns = ['input_ids', 'attention_mask', 'labels'])
-    training_loader = DataLoader(train_dataset, batch_size = 64, shuffle = True)
-    validation_loader = DataLoader(validation_dataset, batch_size = 64, shuffle = False)
+    training_loader = DataLoader(train_dataset, batch_size = 128, shuffle = True)
+    validation_loader = DataLoader(validation_dataset, batch_size = 128, shuffle = False)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 

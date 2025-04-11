@@ -6,6 +6,8 @@ import pandas as pd
 import numpy as np
 from langdetect import detect, DetectorFactory
 import argostranslate.translate
+import os
+import pickle
 
 def filter_nofilter( text ):
     return text
@@ -143,3 +145,19 @@ def detect_and_translate_offline(df):
     df["description_lang_after"] = df["description_translation"].apply(detect_language)
 
     return df
+
+def safe_saver(item, path):
+    os.makedirs(os.path.dirname(path), exist_ok = True)
+    with open(path, 'wb') as f:
+        pickle.dump(item, f)
+
+def safe_loader(path):
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"No file found at: {path}")
+    if os.path.getsize(path) == 0:
+        raise EOFError(f"File is empty at: {path}")
+
+    with open(path, 'rb') as f:
+        item = pickle.load(f)
+
+    return item

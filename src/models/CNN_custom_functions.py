@@ -101,16 +101,17 @@ def resizing(img, size):
     return Image.fromarray(new_image)
 
 class EarlyStopping:
-    def __init__(self, patience = 5):
+    def __init__(self, patience = 5, f1_patience = 10):
         self.patience = patience
+        self.f1_patience = f1_patience
         self.best_loss = float('inf')
         self.best_f1 = 0
         self.counter = 0
+        self.f1_counter = 0
         self.best_f1_model = None
 
     def __call__(self, val_loss, f1_score, model):
-        if f1_score > self.best_f1:
-            self.best_f1_model = model.state_dict()
+        
         if val_loss < self.best_loss:
             self.best_loss = val_loss
             self.counter = 0
@@ -118,9 +119,20 @@ class EarlyStopping:
             self.counter += 1
             if self.counter >= self.patience:
                 self.counter = 0
-                print("Early stopping triggered")
-                model.load_state_dict(self.best_f1_model)
-                        
+                print("Early stopping triggered due to Loss")
+
+                return True
+
+        if f1_score > self.best_f1:
+            self.best_f1 = f1_score
+            self.best_f1_model = model.state_dict()
+            self.f1_counter = 0
+        else:
+            self.f1_counter += 1
+            if self.f1_counter >= self.f1_patience:
+                self.f1_counter = 0
+                print("Early stopping triggered due to F1-Score")
+
                 return True
                     
         return False

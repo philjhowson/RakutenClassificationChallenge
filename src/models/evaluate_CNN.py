@@ -1,4 +1,3 @@
-import pickle
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -7,6 +6,7 @@ from torchcam.methods import GradCAM
 from torchvision import transforms, models
 from sklearn.metrics import f1_score, classification_report
 from CNN_custom_functions import ImageDataset, resizing
+from text_custom_functions import safe_loader, safe_saver
 from PIL import Image
 import matplotlib.pyplot as plt
 import numpy as np
@@ -40,12 +40,12 @@ def evaluate_model():
     test_data = ImageDataset(categories = test, img_dir = img_dir,
                              transform = test_transform)
 
-    test_loader = DataLoader(test_data, batch_size = 64, shuffle = False,
+    test_loader = DataLoader(test_data, batch_size = 256, shuffle = False,
                              num_workers = 4)
 
-    model = models.densenet169(weights = 'DenseNet169_Weights.DEFAULT')
-    model.classifier = nn.Linear(model.classifier.in_features, 27)
-    model.load_state_dict(torch.load('models/densenet_model_weights.pth',
+    model = models.resnet152(weights = 'ResNet152_Weights.DEFAULT')
+    model.fc = nn.Linear(model.fc.in_features, 27)
+    model.load_state_dict(torch.load('models/resnet_model_weights.pth',
                                      weights_only = True))
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -54,12 +54,8 @@ def evaluate_model():
     for param in model.parameters():
         param.requires_grad = False
             
-    layers = [model.features.denseblock4.denselayer31,
-              model.features.denseblock4.denselayer32]
-
-    for layer in layers:
-        for param in layer.parameters():
-            param.requires_grad = True
+    for param in model.layer4.parameters():
+        param.requires_grad = True
 
     model.eval()
 
@@ -78,11 +74,9 @@ def evaluate_model():
     test_f1 = f1_score(test_labs, test_preds, average = 'weighted')
     test_report = classification_report(test_labs, test_preds, output_dict = True)
 
-    with open(f'metrics/densenet_classification_report.pkl', 'wb') as f:
-        pickle.dump(test_report, f)
+    safe_saver(test_report, f'metrics/resnet_classification_report.pkl')
 
-    with open(f'metrics/densenet_performance.pkl', 'rb') as f:
-        history = pickle.load(f)
+    history = safe_loader(f'metrics/resnet_performance.pkl')
 
     values = [max(history['f1']), max(history['val_f1']), test_f1]
     labels = ['Training F1', 'Validation F1', 'Test F1']
@@ -101,7 +95,7 @@ def evaluate_model():
     plt.title('Training, Validation, and Test F1-Scores')
     plt.tight_layout()
 
-    plt.savefig('images/densenet_f1_scores.png')
+    plt.savefig('images/resnet_f1_scores.png')
 
     training_items = ['loss', 'f1', 'gradient']
     validation_items = ['val_loss', 'val_f1']
@@ -136,11 +130,13 @@ def evaluate_model():
         axes.legend()
 
     plt.tight_layout()
-    plt.savefig('images/densenet_training_history.png')
+    plt.savefig('images/resnet_training_history.png')
 
-    grad_cam = GradCAM(model, model.features[-1])
+    grad_cam = GradCAM(model, model.layer4[-1].conv3)
 
-    sample_index = [7150, 6752, 2916, 1410, 7820, 4598, 4928, 1084, 4725, 3365]
+    #sample_index = [7150, 6752, 2916, 1410, 7820, 4598, 4928, 1084, 4725, 3365]
+    sample_index = random_indices = np.random.choice(len(test), size = 10, replace = False)
+    print(sample_index)
     sample_images = test['image'].iloc[sample_index].values
     labels = image_labels.iloc[sample_index].values
 
@@ -203,7 +199,7 @@ def evaluate_model():
 
     plt.tight_layout()
 
-    plt.savefig(f'images/densenet_grad_cam.png')
+    plt.savefig(f'images/resnet_grad_cam.png')
 
 if __name__ == "__main__":
     evaluate_model()

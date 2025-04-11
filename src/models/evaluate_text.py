@@ -13,7 +13,7 @@ import json
 
 def evaluate_model():
 
-    test = pd.read_csv('data/processed/text_test_set.csv')
+    test = pd.read_csv('data/processed/test_text.csv')
     test_dataset = Dataset.from_pandas(test)
 
     tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
@@ -36,7 +36,7 @@ def evaluate_model():
     model = model.to(device)
 
     model.eval()
-    """
+
     test_preds = []
     test_labels = []
 
@@ -113,7 +113,7 @@ def evaluate_model():
 
     plt.tight_layout()
     plt.savefig('images/roBERTa_training_history.png')
-    """
+
     with open('data/processed/test_label_dictionary.json', 'r') as f:
         label_dictionary = json.load(f)
 

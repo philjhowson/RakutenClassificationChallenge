@@ -11,9 +11,9 @@ from CNN_custom_functions import ImageDataset, resizing, EarlyStopping
 from text_custom_functions import safe_saver
 
 def resize_image(img):
-    return resizing(img, 224)
+    return resizing(img, 300)
 
-def train_densenet():
+def train_resnet():
 
     train = pd.read_csv('data/processed/train_CNN.csv')
     val = pd.read_csv('data/processed/validation_CNN.csv')
@@ -50,13 +50,11 @@ def train_densenet():
     val_data = ImageDataset(categories = val, img_dir = img_dir,
                             transform = test_transform)
 
-    train_loader = DataLoader(train_data, batch_size = 512, shuffle = True,
-                              num_workers = 4)
-    val_loader = DataLoader(val_data, batch_size = 512, shuffle = False,
-                            num_workers = 4)
+    train_loader = DataLoader(train_data, batch_size = 256, shuffle = True)
+    val_loader = DataLoader(val_data, batch_size = 256, shuffle = False)
 
-    model = models.densenet169(weights = 'DenseNet169_Weights.DEFAULT')
-    model.classifier = nn.Linear(model.classifier.in_features, 27)
+    model = models.resnet152(weights = 'ResNet152_Weights.DEFAULT')
+    model.fc = nn.Linear(model.fc.in_features, 27)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = model.to(device)
@@ -64,17 +62,13 @@ def train_densenet():
     for param in model.parameters():
         param.requires_grad = False
             
-    layers = [model.features.denseblock4.denselayer28,
-              model.features.denseblock4.denselayer29,
-              model.features.denseblock4.denselayer30,
-              model.features.denseblock4.denselayer31,
-              model.features.denseblock4.denselayer32]
+    for param in model.layer4.parameters():
+        param.requires_grad = True
 
-    for layer in layers:
-        for param in layer.parameters():
-            param.requires_grad = True
+    for param in model.fc.parameters():
+        param.requires_grad = True
 
-    optimizer = optim.Adam(model.parameters(), lr = 1e-2, betas = (0.9, 0.999),
+    optimizer = optim.Adam(model.parameters(), lr = 1e-4, betas = (0.9, 0.999),
                            eps = 1e-8, weight_decay = 1e-4)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode = 'min',
                                                      factor = 0.1, patience = 3)
@@ -90,7 +84,7 @@ def train_densenet():
     history = {'loss' : [], 'f1' : [], 'gradient' : [],
                'val_loss' : [], 'val_f1' : []}
 
-    print('DenseNet169 loaded and ready to begin training.')
+    print('ResNet152 loaded and ready to begin training.')
 
     for epoch in range(epochs):
 
@@ -150,6 +144,7 @@ def train_densenet():
                 val_labs.extend(val_labels.cpu().numpy())
                 val_preds.extend(predicted_classes.cpu().numpy())
 
+
             val_f1 = f1_score(val_labs, val_preds, average = 'weighted')
             val_loss /= len(val_loader)
 
@@ -166,10 +161,10 @@ def train_densenet():
         scheduler.step(val_loss)
 
     model.load_state_dict(early_stopping.best_f1_model)
-    torch.save(model.state_dict(), f'models/densenet_model_weights.pth')
-    safe_saver(history, 'metrics/densenet_performance.pkl')
+    torch.save(model.state_dict(), f'models/resnet_model_weights.pth')
+    safe_saver(history, 'metrics/resnet_performance.pkl')
 
-    print('DenseNet169 model and training metrics saved.')
+    print('ResNet152 model and training metrics saved.')
 
 if __name__ == "__main__":
-    train_densenet()
+    train_resnet()
