@@ -12,6 +12,7 @@ import numpy as np
 from CNN_custom_functions import resizing, EarlyStopping
 from text_custom_functions import safe_loader, safe_saver
 from multimodal_custom_functions import MultimodalData, multimodal_collate, MultimodalModel
+import os
 
 def resize_image(img):
     return resizing(img, 224)
@@ -22,8 +23,9 @@ def train_multimodal_model():
 
     data = pd.read_parquet('data/processed/formatted_text.parquet')
     data['image_name'] = data['image_name'] + '.jpg'
+    data = data.drop(columns = ['filtered_text'], inplace = True)
     train_indices = safe_loader('data/processed/train_indices.pkl')
-    val_indices = safe_loader('data/processed/val_indicies.pkl')
+    val_indices = safe_loader('data/processed/val_indices.pkl')
     test_indices = safe_loader('data/processed/test_indices.pkl')
 
     training = data.iloc[train_indices]
@@ -33,6 +35,9 @@ def train_multimodal_model():
     training.to_csv('data/processed/train_multimodal.csv', index = False)
     validation.to_csv('data/processed/validation_multimodal.csv', index = False)
     test.to_csv('data/processed/test_multimodal.csv', index = False)
+
+    training, validation = train_test_split(validation, test_size = 0.2,
+                                            random_state = 42)
 
     labels = training['labels']
 
@@ -56,33 +61,46 @@ def train_multimodal_model():
         ])
 
     tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
+    workers = os.cpu_count() // 2
 
     training_data = MultimodalData(training, img_dir = img_dir, transform = training_transforms,
                                    tokenizer = tokenizer)
-    training_loader = DataLoader(training_data, batch_size = 256, shuffle = True,
-                                       collate_fn = multimodal_collate, num_workers = 4)
+    training_loader = DataLoader(training_data, batch_size = 128, shuffle = True,
+                                 collate_fn = multimodal_collate,
+                                 num_workers = workers, pin_memory = False)
     validation_data = MultimodalData(validation, img_dir = img_dir, transform = validation_transforms,
                                      tokenizer = tokenizer)
-    validation_loader = DataLoader(validation_data, batch_size = 256, shuffle = False,
-                                       collate_fn = multimodal_collate, num_workers = 4)
+    validation_loader = DataLoader(validation_data, batch_size = 128, shuffle = False,
+                                   collate_fn = multimodal_collate,
+                                   num_workers = workers, pin_memory = False)
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    densenet = models.densenet169(weights = None)
-    densenet.classifier = nn.Linear(densenet.classifier.in_features, 27)
-    densenet.load_state_dict(torch.load('models/densenet_model_weights.pth',
+    resnet = models.resnet152(weights = None)
+    resnet.fc = nn.Linear(resnet.fc.in_features, 27)
+    resnet.load_state_dict(torch.load('models/resnet_model_weights.pth',
                                         weights_only = True))
 
-    for param in densenet.parameters():
+    for param in resnet.parameters():
         param.requires_grad = False
+            
+    for param in resnet.layer4.parameters():
+        param.requires_grad = True
+
+    resnet = nn.Sequential(*list(resnet.children())[:-1])
 
     roBERTa = RobertaForSequenceClassification.from_pretrained('roberta-base',  num_labels = 27)
     roBERTa.load_state_dict(torch.load('models/roBERTa_model_weights.pth', weights_only = True))
 
-    for param in roBERTa.parameters():
-        param.requires_grad = False
+    for i, layer in enumerate(roBERTa.roberta.encoder.layer):
+        if i < len(roBERTa.roberta.encoder.layer) - 5:
+            for param in layer.parameters():
+                param.requires_grad = False
+        else:
+            for param in layer.parameters():
+                param.requires_grad = True
 
-    model = MultimodalModel(roBERTa, densenet)
+    model = MultimodalModel(roBERTa, resnet)
     model = model.to(device)
 
     optimizer = optim.Adam(model.parameters(), lr = 1e-4, betas = (0.9, 0.999),
@@ -97,7 +115,7 @@ def train_multimodal_model():
 
     history = {'loss': [], 'f1': [], 'gradient': [], 'val_loss': [], 'val_f1': []}
     
-    epochs = 15
+    epochs = 20
 
     for epoch in range(epochs):
 
@@ -181,9 +199,9 @@ def train_multimodal_model():
         scheduler.step(val_loss)
 
     model.load_state_dict(early_stopping.best_f1_model)
-    torch.save(model.state_dict(), f'models/multimodal_model_weights.pth')
+    torch.save(model.state_dict(), f'models/roBERTa+resnet_model_weights.pth')
 
-    safe_saver(history, 'metrics/multimodal_performance.pkl')
+    safe_saver(history, 'metrics/roBERTa+resnet_performance.pkl')
 
     print('Multimodal model and training metrics saved.')
 

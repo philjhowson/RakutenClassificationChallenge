@@ -50,25 +50,54 @@ class MultimodalModel(nn.Module):
     def __init__(self, txt_model, img_model):
         super().__init__()
         self.txt = txt_model
-        self.img = nn.Sequential(*list(img_model.children())[:-1])
-        self.pool = nn.AdaptiveAvgPool2d((1, 1))
-        self.classifier = nn.Linear(2432, 27)
+        self.img = img_model
+        self.classifier = nn.Sequential(
+            nn.Linear(2816, 1024),
+            nn.ReLU(),
+            nn.BatchNorm1d(1024),
+            nn.Dropout(0.3),
+            nn.Linear(1024, 256),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(256, 27)
+        )
 
-        init.xavier_uniform_(self.classifier.weight)
-        if self.classifier.bias is not None:
-            init.zeros_(self.classifier.bias)
+        for layer in self.classifier:
+            if isinstance(layer, nn.Linear):
+                init.xavier_uniform_(layer.weight)
+                if layer.bias is not None:
+                    init.zeros_(layer.bias)
 
     def forward(self, input_ids, attention_mask, images):
         outputs = self.txt(input_ids = input_ids,
                            attention_mask = attention_mask,
                            output_hidden_states = True)
         last_hidden_state = outputs.hidden_states[-1]
-        cls_rep = last_hidden_state[:, 0, :]
+        text = last_hidden_state[:, 0, :]
 
         images = self.img(images)
-        images = self.pool(images)
         images = images.view(images.size(0), -1)
     
-        features = torch.cat([cls_rep, images], dim = 1)
+        features = torch.cat([text, images], dim = 1)
         
         return self.classifier(features)
+
+class MultimodalFeatures(nn.Module):
+    def __init__(self, txt_model, img_model):
+        super().__init__()
+        self.txt = txt_model
+        self.img = img_model
+
+    def forward(self, input_ids, attention_mask, images):
+        outputs = self.txt(input_ids = input_ids,
+                           attention_mask = attention_mask,
+                           output_hidden_states = True)
+        last_hidden_state = outputs.hidden_states[-1]
+        text = last_hidden_state[:, 0, :]
+
+        images = self.img(images)
+        images = images.view(images.size(0), -1)
+    
+        features = torch.cat([text, images], dim = 1)
+        
+        return features

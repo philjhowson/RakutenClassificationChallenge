@@ -40,12 +40,25 @@ def evaluate_multimodal_model():
                              collate_fn = multimodal_collate, num_workers = 4)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    densenet = models.densenet169(weights = None)
-    densenet.classifier = nn.Linear(densenet.classifier.in_features, 27)
-    roBERTa = RobertaForSequenceClassification.from_pretrained('roberta-base',
-                                                               num_labels = 27)
-    model = MultimodalModel(roBERTa, densenet)
-    model.load_state_dict(torch.load('models/multimodal_model_weights.pth',
+    resnet = models.resnet152(weights = None)
+    resnet.fc = nn.Linear(resnet.fc.in_features, 27)
+    resnet.load_state_dict(torch.load('models/resnet_model_weights.pth',
+                                        weights_only = True))
+
+    for param in resnet.parameters():
+        param.requires_grad = False
+
+    resnet = nn.Sequential(*list(resnet.children())[:-1])
+
+    roBERTa = RobertaForSequenceClassification.from_pretrained('roberta-base',  num_labels = 27)
+    roBERTa.load_state_dict(torch.load('models/roBERTa_model_weights.pth', weights_only = True))
+
+    for param in roBERTa.parameters():
+        param.requires_grad = False
+
+    model = MultimodalModel(roBERTa, resnet)
+    model = model.to(device)
+    model.load_state_dict(torch.load('models/roBERTa+resnet_model_weights.pth',
                                      weights_only = True))
     model.to(device)
 
@@ -73,10 +86,8 @@ def evaluate_multimodal_model():
     f1 = f1_score(all_labs, all_preds, average = 'weighted')
     class_report = classification_report(all_labs, all_preds, output_dict = True)
 
-    with open('metrics/multimodal_classification_report', 'w') as f:
-        json.dump(class_report, f)
-
-    multimodal_history = safe_loader('metrics/multimodal_performance.pkl')
+    safe_saver(class_report, 'metrics/roBERTa+resnet_classification_report.pkl')
+    multimodal_history = safe_loader('metrics/roBERTa+resnet_performance.pkl')
 
     train_f1 = max(multimodal_history['f1'])
     validation_f1 = max(multimodal_history['val_f1'])
@@ -84,7 +95,7 @@ def evaluate_multimodal_model():
     f1_labels = ['Training F1-Score', 'Validation F1-Score', 'Test F1-Score']
     f1_values = [train_f1, validation_f1, f1]
 
-    fig = plt.figure(figsize = (10, 5))
+    fig = plt.figure(figsize = (15, 5))
 
     bars = plt.bar(f1_labels, f1_values, color = ['blue', 'purple', 'green'])
 
@@ -99,20 +110,25 @@ def evaluate_multimodal_model():
     plt.title('Training, Validation, and Test F1-Scores')
     plt.tight_layout()
 
-    plt.savefig('images/mutlimodal_f1_scores.png')
+    plt.savefig('images/roBERa+resnet_f1_scores.png')
 
     densenet_history = safe_loader('metrics/densenet_classification_report.pkl')
+    resnet_history = safe_loader('metrics/resnet_classification_report.pkl')
     roBERTa_history = safe_loader('metrics/roBERTa_classification_report.pkl')
+    roBERTa_densenet_history = safe_loader('metrics/roBERTa+densenet_classification_report.pkl')
 
     densenet_f1 = densenet_history['weighted avg']['f1-score']
+    resnet_f1 = resnet_history['weighted avg']['f1-score']
     roBERTa_f1 = roBERTa_history['weighted avg']['f1-score']
+    roBERTa_densenet_f1 = roBERTa_densenet_history['weighted avg']['f1-score']
 
-    f1_values = [densenet_f1, roBERTa_f1, f1]
-    f1_labels = ['DenseNet F1-Score', 'roBERTa F1-Score', 'Multimodal F1-Score']
+    f1_values = [densenet_f1, resnet_f1, roBERTa_f1, roBERTa_densenet_f1, f1]
+    f1_labels = ['DenseNet F1-Score', 'ResNet F1-Score', 'roBERTa F1-Score',
+                 'roBERTa + DenseNet F1-Score', 'roBERTa + ResNet F1-Score']
 
     plt.figure(figsize = (10, 5))
 
-    bars = plt.bar(f1_labels, f1_values, color = ['blue', 'purple', 'green'])
+    bars = plt.bar(f1_labels, f1_values, color = ['blue', 'purple', 'black', 'orange', 'green'])
 
     for bar in bars:
         yval = round(bar.get_height(), 3)
@@ -120,9 +136,10 @@ def evaluate_multimodal_model():
                  ha = 'center', va = 'bottom', color = 'white',
                  fontweight = 'bold')
 
+    plt.xticks(rotation = 45, ha = 'right', va = 'top')
     plt.ylim(0, 1)
     plt.ylabel('F1-Score')
-    plt.title('Test Scores for DenseNet, roBERTa, and the Mulitmodal Model')
+    plt.title('Test Scores for DenseNet, ResNet, roBERTa, and the Mulitmodal Models')
     plt.tight_layout()
 
     plt.savefig('images/model_f1_comparisons.png')
@@ -131,23 +148,3 @@ def evaluate_multimodal_model():
 
 if __name__ == '__main__':
     evaluate_multimodal_model()
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    

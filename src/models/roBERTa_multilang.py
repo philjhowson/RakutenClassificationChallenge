@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 import torch.optim as optim
-from transformers import RobertaForSequenceClassification
+from transformers import AutoModelForSequenceClassification
 from sklearn.utils.class_weight import compute_class_weight
 from sklearn.metrics import f1_score
 from datasets import Dataset
@@ -10,29 +10,33 @@ from text_custom_functions import EarlyStopping, tokenize_function, safe_saver
 import pandas as pd
 import numpy as np
 
-def train_roBERTa():
+def train_multilang():
 
-    training = pd.read_csv('data/processed/train_text.csv')
-    validation = pd.read_csv('data/processed/validation_text.csv')
+    training = pd.read_csv('data/processed/train_multilang.csv')
+    training.dropna(inplace = True)
+    validation = pd.read_csv('data/processed/validation_multilang.csv')
 
     train_dataset = Dataset.from_pandas(training)
     validation_dataset = Dataset.from_pandas(validation)
 
-    train_dataset = train_dataset.map(lambda x : tokenize_function(x, column = 'filtered_designation',
-                                                                   length = 128, language = 'english'),
+    train_dataset = train_dataset.map(lambda x : tokenize_function(x, column = 'filtered_text',
+                                                                   length = 128, language = 'multi'),
                                       batched = True, num_proc = 4)
-    validation_dataset = validation_dataset.map(lambda x : tokenize_function(x, column = 'filtered_designation',
-                                                                   length = 128, language = 'english'),
+    validation_dataset = validation_dataset.map(lambda x : tokenize_function(x, column = 'filtered_text',
+                                                                   length = 128, language = 'multi'),
                                                 batched = True, num_proc = 4)
+    
     train_dataset.set_format(type = 'torch', columns = ['input_ids', 'attention_mask', 'labels'])
     validation_dataset.set_format(type = 'torch', columns = ['input_ids', 'attention_mask', 'labels'])
-    training_loader = DataLoader(train_dataset, batch_size = 128, shuffle = True)
-    validation_loader = DataLoader(validation_dataset, batch_size = 128, shuffle = False)
+    training_loader = DataLoader(train_dataset, batch_size = 64, shuffle = True, num_workers = 4,
+                                 pin_memory = True)
+    validation_loader = DataLoader(validation_dataset, batch_size = 64, shuffle = False, num_workers = 4,
+                                 pin_memory = True)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-    model = RobertaForSequenceClassification.from_pretrained('roberta-base',  num_labels = 27)
-
+    model = AutoModelForSequenceClassification.from_pretrained('xlm-roberta-base',
+                                                               num_labels = 27)
+    
     for i, layer in enumerate(model.roberta.encoder.layer):
         if i < len(model.roberta.encoder.layer) - 5:
             for param in layer.parameters():
@@ -63,7 +67,7 @@ def train_roBERTa():
     history = {'loss': [], 'f1': [], 'gradient': [],
                'val_loss': [], 'val_f1': []}
 
-    print('roBERTa loaded and ready to begin training.')
+    print('roBERTa mulitlanguage model loaded and ready to begin training.')
 
     for epoch in range(epochs):
 
@@ -78,14 +82,15 @@ def train_roBERTa():
 
             input_ids = batch['input_ids'].to(device)
             attention_mask = batch['attention_mask'].to(device)
-            labels = batch['labels'].to(device)
+            labels = batch['labels'].to(device).long()
 
             optimizer.zero_grad()
 
-            outputs = model(input_ids, attention_mask = attention_mask)
-            logits = outputs.logits
-            
-            loss = criterion(logits, labels)
+            with torch.autocast(device_type = 'cuda'):
+                outputs = model(input_ids, attention_mask = attention_mask)
+                logits = outputs.logits
+                loss = criterion(logits, labels)
+                
             loss.backward()
             optimizer.step()
 
@@ -154,11 +159,11 @@ def train_roBERTa():
         scheduler.step(val_loss)
 
     model.load_state_dict(early_stopping.best_f1_model)
-    torch.save(model.state_dict(), f'models/roBERTa_model_weights.pth')
+    torch.save(model.state_dict(), f'models/roBERTa_multi_model_weights.pth')
 
-    safe_saver(history, 'metrics/roBERTa_performance.pkl')
+    safe_saver(history, 'metrics/roBERTa_multi_performance.pkl')
 
-    print('roBERTa model and training metrics saved.')
+    print('roBERTa multilanguage model and training metrics saved.')
 
-if __name__ == "__main__":
-    train_roBERTa()
+if __name__ ==  '__main__':
+    train_multilang()

@@ -1,6 +1,6 @@
 import torch
 from torch.utils.data import DataLoader
-from transformers import RobertaTokenizer, RobertaForSequenceClassification
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from sklearn.metrics import f1_score, classification_report
 from datasets import Dataset
 from text_custom_functions import safe_loader, safe_saver
@@ -13,25 +13,33 @@ import json
 
 def evaluate_model():
 
-    test = pd.read_csv('data/processed/test_text.csv')
+    tokenizer = AutoTokenizer.from_pretrained('xlm-roberta-base')
+
+    def tokenize_function(df: pd.DataFrame, column: str, length: int = 128):
+
+        encoded = tokenizer(
+            df[column],
+            padding = 'max_length',
+            truncation = True,
+            max_length = length,
+            return_tensors = 'pt'
+        )
+        return encoded
+
+    test = pd.read_csv('data/processed/test_multilang.csv')
     test_dataset = Dataset.from_pandas(test)
 
-    tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
-
-    def tokenize_function(dataset):
-        return tokenizer(dataset['designation_filtered'], padding = 'max_length',
-                     truncation = True, max_length = 128)
-
-    test_dataset = test_dataset.map(tokenize_function, batched = True,
-                                    num_proc = 4)
+    test_dataset = test_dataset.map(lambda x : tokenize_function(x, column = 'filtered_text',
+                                                                 length = 128),
+                                    batched = True, num_proc = 4)
     test_dataset.set_format(type = 'torch', columns = ['input_ids', 'attention_mask', 'labels'])
     test_loader = DataLoader(test_dataset, batch_size = 64, shuffle = False)
 
-    
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = RobertaForSequenceClassification.from_pretrained('roberta-base', num_labels = 27,
-                                                             attn_implementation = "eager")
-    model.load_state_dict(torch.load('models/roBERTa_model_weights.pth',
+    model = AutoModelForSequenceClassification.from_pretrained('xlm-roberta-base',
+                                                               num_labels = 27,
+                                                               attn_implementation = "eager")
+    model.load_state_dict(torch.load('models/roBERTa_multi_model_weights.pth',
                                      weights_only = True))
     model = model.to(device)
 
@@ -58,8 +66,8 @@ def evaluate_model():
     test_f1 = f1_score(test_labels, test_preds, average = 'weighted')
     test_report = classification_report(test_labels, test_preds, output_dict = True)
         
-    safe_saver(test_report, 'metrics/roBERTa_classification_report.pkl')
-    history = safe_loader('metrics/roBERTa_performance.pkl')
+    safe_saver(test_report, 'metrics/roBERTa_multi_classification_report.pkl')
+    history = safe_loader('metrics/roBERTa_multi_performance.pkl')
 
     labels = ['Training F1-Score', 'Validation F1-Score', 'Test F1-Score']
     scores = [max(history['f1']), max(history['val_f1']), test_f1]
@@ -77,7 +85,7 @@ def evaluate_model():
     plt.title('Training, Validation, and Text F1-Scores')
     plt.tight_layout()
 
-    plt.savefig('images/roBERTa_f1_scores.png')
+    plt.savefig('images/roBERTa_multi_f1_scores.png')
 
     fig, ax = plt.subplots(1, 3, figsize = (20, 5))
 
@@ -112,7 +120,7 @@ def evaluate_model():
         axes.legend()
 
     plt.tight_layout()
-    plt.savefig('images/roBERTa_training_history.png')
+    plt.savefig('images/roBERTa_multi_training_history.png')
 
     with open('data/processed/test_label_dictionary.json', 'r') as f:
         label_dictionary = json.load(f)
@@ -127,7 +135,7 @@ def evaluate_model():
             input_ids = batch['input_ids'].to(device)
             attention_mask = batch['attention_mask'].to(device)
 
-            outputs = model(input_ids, attention_mask=attention_mask, output_attentions=True)
+            outputs = model(input_ids, attention_mask = attention_mask, output_attentions = True)
 
             logits = outputs.logits
             preds = torch.argmax(logits, dim=1)
@@ -162,7 +170,7 @@ def evaluate_model():
             plt.ylabel('Query Token Position')
             plt.tight_layout()
 
-            plt.savefig(f"images/mean_attention_map_class_{cls}.png")
+            plt.savefig(f"images/mean_attention_map_multi_class_{cls}.png")
             plt.close()
 
 if __name__ == '__main__':
