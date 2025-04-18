@@ -47,20 +47,21 @@ def multimodal_collate(batch):
     return text_batch, images, labels
 
 class MultimodalModel(nn.Module):
-    def __init__(self, txt_model, img_model):
+    def __init__(self, txt_model, img_model, return_features = False):
         super().__init__()
         self.txt = txt_model
         self.img = img_model
         self.classifier = nn.Sequential(
-            nn.Linear(2816, 1024),
-            nn.ReLU(),
+            nn.Linear(2432, 1024),
             nn.BatchNorm1d(1024),
-            nn.Dropout(0.3),
-            nn.Linear(1024, 256),
             nn.ReLU(),
-            nn.Dropout(0.2),
+            nn.Dropout(0.4),
+            nn.Linear(1024, 256),
+            nn.Dropout(0.3),
+            nn.ReLU(),
             nn.Linear(256, 27)
         )
+        self.return_features = return_features
 
         for layer in self.classifier:
             if isinstance(layer, nn.Linear):
@@ -80,24 +81,7 @@ class MultimodalModel(nn.Module):
     
         features = torch.cat([text, images], dim = 1)
         
-        return self.classifier(features)
-
-class MultimodalFeatures(nn.Module):
-    def __init__(self, txt_model, img_model):
-        super().__init__()
-        self.txt = txt_model
-        self.img = img_model
-
-    def forward(self, input_ids, attention_mask, images):
-        outputs = self.txt(input_ids = input_ids,
-                           attention_mask = attention_mask,
-                           output_hidden_states = True)
-        last_hidden_state = outputs.hidden_states[-1]
-        text = last_hidden_state[:, 0, :]
-
-        images = self.img(images)
-        images = images.view(images.size(0), -1)
-    
-        features = torch.cat([text, images], dim = 1)
+        if self.return_features == True:
+            return features
         
-        return features
+        return self.classifier(features)

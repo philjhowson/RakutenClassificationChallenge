@@ -2,17 +2,17 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torchvision import transforms, models
-from transformers import RobertaTokenizer, RobertaForSequenceClassification
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import torch.optim as optim
 from sklearn.utils.class_weight import compute_class_weight
 from sklearn.metrics import f1_score
-from sklearn.model_selection import train_test_split
 import pandas as pd
 import numpy as np
 from CNN_custom_functions import resizing, EarlyStopping
 from text_custom_functions import safe_loader, safe_saver
 from multimodal_custom_functions import MultimodalData, multimodal_collate, MultimodalModel
 import os
+import json
 
 def resize_image(img):
     return resizing(img, 224)
@@ -21,9 +21,20 @@ def train_multimodal_model():
 
     img_dir = 'data/images/image_train/'
 
-    data = pd.read_parquet('data/processed/formatted_text.parquet')
+    data = pd.read_parquet('data/processed/translated_text.parquet')
+    data = data[['designation_filtered', 'description_filtered', 'image_name',
+                 'prdtypecode']]
+    data['designation_filtered'] = data['combined_text'] = data.apply(lambda row: f"{row['designation_filtered']} {row['description_filtered']}", axis = 1)
+    data = data[['image_name', 'designation_filtered', 'prdtypecode']]
+    data.rename(columns = {'prdtypecode': 'labels'}, inplace = True)
     data['image_name'] = data['image_name'] + '.jpg'
-    data = data.drop(columns = ['filtered_text'], inplace = True)
+
+    with open('data/processed/test_label_dictionary.json', 'r') as f:
+        labels = json.load(f)
+
+    labels = {int(key): value for key, value in labels.items()}
+    data['labels'] = data['labels'].map(labels)
+
     train_indices = safe_loader('data/processed/train_indices.pkl')
     val_indices = safe_loader('data/processed/val_indices.pkl')
     test_indices = safe_loader('data/processed/test_indices.pkl')
@@ -35,9 +46,6 @@ def train_multimodal_model():
     training.to_csv('data/processed/train_multimodal.csv', index = False)
     validation.to_csv('data/processed/validation_multimodal.csv', index = False)
     test.to_csv('data/processed/test_multimodal.csv', index = False)
-
-    training, validation = train_test_split(validation, test_size = 0.2,
-                                            random_state = 42)
 
     labels = training['labels']
 
@@ -60,47 +68,43 @@ def train_multimodal_model():
                              std = [0.229, 0.224, 0.225])
         ])
 
-    tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
+    tokenizer = AutoTokenizer.from_pretrained('xlm-roberta-base')
     workers = os.cpu_count() // 2
 
     training_data = MultimodalData(training, img_dir = img_dir, transform = training_transforms,
                                    tokenizer = tokenizer)
-    training_loader = DataLoader(training_data, batch_size = 128, shuffle = True,
+    training_loader = DataLoader(training_data, batch_size = 64, shuffle = True,
                                  collate_fn = multimodal_collate,
-                                 num_workers = workers, pin_memory = False)
+                                 num_workers = workers, pin_memory = True)
     validation_data = MultimodalData(validation, img_dir = img_dir, transform = validation_transforms,
                                      tokenizer = tokenizer)
-    validation_loader = DataLoader(validation_data, batch_size = 128, shuffle = False,
+    validation_loader = DataLoader(validation_data, batch_size = 64, shuffle = False,
                                    collate_fn = multimodal_collate,
-                                   num_workers = workers, pin_memory = False)
+                                   num_workers = workers, pin_memory = True)
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    resnet = models.resnet152(weights = None)
-    resnet.fc = nn.Linear(resnet.fc.in_features, 27)
-    resnet.load_state_dict(torch.load('models/resnet_model_weights.pth',
+    densenet = models.densenet169(weights = None)
+    densenet.classifier = nn.Linear(densenet.classifier.in_features, 27)
+    densenet.load_state_dict(torch.load('models/densenet_model_weights.pth',
                                         weights_only = True))
 
-    for param in resnet.parameters():
+    for param in densenet.parameters():
         param.requires_grad = False
-            
-    for param in resnet.layer4.parameters():
-        param.requires_grad = True
 
-    resnet = nn.Sequential(*list(resnet.children())[:-1])
+    densenet = nn.Sequential(*list(densenet.children())[:-1],
+                             nn.AdaptiveAvgPool2d((1, 1)))
 
-    roBERTa = RobertaForSequenceClassification.from_pretrained('roberta-base',  num_labels = 27)
-    roBERTa.load_state_dict(torch.load('models/roBERTa_model_weights.pth', weights_only = True))
+    roBERTa = AutoModelForSequenceClassification.from_pretrained('xlm-roberta-base',
+                                                               num_labels = 27)
+    roBERTa.load_state_dict(torch.load('models/roBERTa_multi_model_weights.pth', weights_only = True))
 
     for i, layer in enumerate(roBERTa.roberta.encoder.layer):
         if i < len(roBERTa.roberta.encoder.layer) - 5:
             for param in layer.parameters():
                 param.requires_grad = False
-        else:
-            for param in layer.parameters():
-                param.requires_grad = True
 
-    model = MultimodalModel(roBERTa, resnet)
+    model = MultimodalModel(roBERTa, densenet)
     model = model.to(device)
 
     optimizer = optim.Adam(model.parameters(), lr = 1e-4, betas = (0.9, 0.999),
@@ -131,8 +135,11 @@ def train_multimodal_model():
             images, labels = images.to(device), labels.to(device).long()
 
             optimizer.zero_grad()
-            outputs = model(input_ids, attention_mask, images)
-            loss = criterion(outputs, labels)
+
+            with torch.autocast(device_type = 'cuda'):
+                outputs = model(input_ids, attention_mask, images)
+                loss = criterion(outputs, labels)
+
             loss.backward()
 
             i += 1
@@ -199,9 +206,9 @@ def train_multimodal_model():
         scheduler.step(val_loss)
 
     model.load_state_dict(early_stopping.best_f1_model)
-    torch.save(model.state_dict(), f'models/roBERTa+resnet_model_weights.pth')
+    torch.save(model.state_dict(), f'models/roBERTa_multi+densenet_model_weights.pth')
 
-    safe_saver(history, 'metrics/roBERTa+resnet_performance.pkl')
+    safe_saver(history, 'metrics/roBERTa_multi+densenet_performance.pkl')
 
     print('Multimodal model and training metrics saved.')
 

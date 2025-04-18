@@ -12,7 +12,7 @@ def filter_dataset():
                  'description_filtered', 'prdtypecode', 'image_name']]
     data['designation_lang'] = data['designation_lang'].replace({'unknown' : 'fr'})
     data['description_filtered'] = data['description_filtered'].fillna('')
-    data['combined_text'] = data['designation_filtered'] + data['description_filtered']
+    data['combined_text'] = data.apply(lambda row: f"{row['designation_filtered']} {row['description_filtered']}", axis = 1)
     data.drop(columns = ['designation_filtered', 'description_filtered'], inplace = True)
 
     hexcode = {'\x93': '"', '\x94': '"', '\x97': '-', '\xad': '-',
