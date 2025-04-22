@@ -52,7 +52,7 @@ visit the challenge site below, register, and then download the data.
     │        ├── multimodal.py # trains text/image model
     │        ├── resnet.py # trains ResNet152
     │        ├── roBERTa.py # trains roBERTa-base on English data
-    │        ├── roBERTa_mulitlang.py # trains roBERTa-base on multilingual data
+    │        ├── roBERTa_multilang.py # trains roBERTa-base on multilingual data
     │        └── text_custom_functions.py # custom functions used for text processing
     ├── streamlit # contains the files for the streamlit app
     │   ├── images # contains images used in the streamlit app
