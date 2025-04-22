@@ -19,10 +19,6 @@ visit the challenge site below, register, and then download the data.
 
 [Rakuten Multimodal Product Data Classification](https://challengedata.ens.fr/challenges/35)
 
-## Project Introduction
-
-
-
 ## Project Organization
 ------------------------------------------------------------------------
     root
@@ -62,4 +58,5 @@ visit the challenge site below, register, and then download the data.
     ├── README.md
     └── requirements.txt
 
+## Project Introduction
 
