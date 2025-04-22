@@ -58,10 +58,10 @@ def filter_dataset():
 
         except Exception as e:
             print(f"Error processing text: {e}")
-            return text  # Fallback in case of error
+            return text
 
     data['filtered_text'] = data.apply(lambda x: process_text(x['designation_lang'], x['combined_text']), axis = 1)
-    data['filtered_designation'] = data.apply(lambda x: process_text(x['designation_lang'], x['designation_translation']), axis = 1)
+    data['filtered_designation'] = data.apply(lambda x: process_text('en', x['designation_translation']), axis = 1)
 
     original_labels = data['prdtypecode'].tolist()
     unique_labels = sorted(set(original_labels))

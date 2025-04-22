@@ -28,19 +28,10 @@ class EarlyStopping:
                     
         return False
     
-tokenizer = AutoTokenizer.from_pretrained('roberta-base')
-multi_tokenizer = AutoTokenizer.from_pretrained('xlm-roberta-base')
 
-def tokenize_function(df: pd.DataFrame, column: str, language: str = 'english', length: int = 128):
+def tokenize_function(df: pd.DataFrame, column: str, tokenizer, length: int = 128):
 
-    if language.lower() == 'english':
-        selected_tokenizer = tokenizer
-    elif language.lower() == 'multi':
-        selected_tokenizer = multi_tokenizer
-    else:
-        raise ValueError("lang must be either 'english' or 'multi'")
-
-    encoded = selected_tokenizer(
+    encoded = tokenizer(
         df[column],
         padding = 'max_length',
         truncation = True,

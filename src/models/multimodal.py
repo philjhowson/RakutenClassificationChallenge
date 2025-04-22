@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torchvision import transforms, models
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from transformers import RobertaTokenizer, RobertaForSequenceClassification, AutoTokenizer, AutoModelForSequenceClassification
 import torch.optim as optim
 from sklearn.utils.class_weight import compute_class_weight
 from sklearn.metrics import f1_score
@@ -17,17 +17,16 @@ import json
 def resize_image(img):
     return resizing(img, 224)
 
-def train_multimodal_model():
+def train_multimodal_model(text = None, image = None):
+
+    """
+    sets the image folder and then loads the data and the indices for the
+    training, validation, and test data.
+    """
 
     img_dir = 'data/images/image_train/'
 
     data = pd.read_parquet('data/processed/translated_text.parquet')
-    data = data[['designation_filtered', 'description_filtered', 'image_name',
-                 'prdtypecode']]
-    data['designation_filtered'] = data['combined_text'] = data.apply(lambda row: f"{row['designation_filtered']} {row['description_filtered']}", axis = 1)
-    data = data[['image_name', 'designation_filtered', 'prdtypecode']]
-    data.rename(columns = {'prdtypecode': 'labels'}, inplace = True)
-    data['image_name'] = data['image_name'] + '.jpg'
 
     with open('data/processed/test_label_dictionary.json', 'r') as f:
         labels = json.load(f)
@@ -39,13 +38,121 @@ def train_multimodal_model():
     val_indices = safe_loader('data/processed/val_indices.pkl')
     test_indices = safe_loader('data/processed/test_indices.pkl')
 
-    training = data.iloc[train_indices]
-    validation = data.iloc[val_indices]
-    test = data.iloc[test_indices]
+    train = data.iloc[train_indices]
+    val = data.iloc[val_indices]
+    testing = data.iloc[test_indices]
 
-    training.to_csv('data/processed/train_multimodal.csv', index = False)
-    validation.to_csv('data/processed/validation_multimodal.csv', index = False)
-    test.to_csv('data/processed/test_multimodal.csv', index = False)
+    """
+    if the text model is roBERTa-base, which is trained on English
+    """
+
+    if text == 'english':
+
+        training = pd.read_csv('data/processed/train_text.csv')
+        training['image_name'] = train['image_name'] + '.jpg'
+        training = training[['image_name', 'designation_filtered', 'labels']]
+        validation = pd.read_csv('data/processed/validation_text.csv')
+        validation['image_name'] = val['image_name'] + '.jpg'
+        validation = validation[['image_name', 'designation_filtered', 'labels']]        
+        test = pd.read_csv('data/processed/test_text.csv')
+        test['image_name'] = test['image_name'] + '.jpg'
+        test = test[['image_name', 'designation_filtered', 'labels']]  
+
+        training.to_csv('data/processed/train_english_multimodal.csv', index = False)
+        validation.to_csv('data/processed/validation_english_multimodal.csv', index = False)
+        test.to_csv('data/processed/test_english_multimodal.csv', index = False)
+
+        tokenizer = AutoTokenizer.from_pretrained('roberta-base')
+        text_model = RobertaForSequenceClassification.from_pretrained('roberta-base',  num_labels = 27,
+                                                               attn_implementation = 'eager')
+
+        for i, layer in enumerate(text_model.roberta.encoder.layer):
+            if i < len(text_model.roberta.encoder.layer) - 1:
+                for param in layer.parameters():
+                    param.requires_grad = False
+            else:
+                for param in layer.parameters():
+                    param.requires_grad = True
+
+        text_model.load_state_dict(torch.load('models/roBERTa_model_weights.pth',
+                                         weights_only = True))
+
+        text = 'roBERTa'
+
+    elif text == 'multi':
+
+        training = pd.read_csv('data/processed/train_multilang.csv')
+        training['image_name'] = train['image_name'] + '.jpg'
+        training = training[['image_name', 'filtered_text', 'labels']]
+        validation = pd.read_csv('data/processed/validation_multilang.csv')
+        validation['image_name'] = val['image_name'] + '.jpg'
+        validation = validation[['image_name', 'filtered_text', 'labels']]        
+        test = pd.read_csv('data/processed/test_multilang.csv')
+        test['image_name'] = test['image_name'] + '.jpg'
+        test = test[['image_name', 'filtered_text', 'labels']]  
+
+        training.to_csv('data/processed/train_multi_multimodal.csv', index = False)
+        validation.to_csv('data/processed/validation_multi_multimodal.csv', index = False)
+        test.to_csv('data/processed/test_multi_multimodal.csv', index = False)
+
+        tokenizer = AutoTokenizer.from_pretrained('xlm-roberta-base')
+        text_model = AutoModelForSequenceClassification.from_pretrained('xlm-roberta-base',
+                                                               num_labels = 27,
+                                                               attn_implementation = 'eager')
+
+        for i, layer in enumerate(text_model.roberta.encoder.layer):
+            if i < len(text_model.roberta.encoder.layer) - 1:
+                for param in layer.parameters():
+                    param.requires_grad = False
+            else:
+                for param in layer.parameters():
+                    param.requires_grad = True
+
+        text_model.load_state_dict(torch.load('models/roBERTa_multi_model_weights.pth',
+                                         weights_only = True))
+
+        text = 'roBERTa_multi'
+
+        for i, layer in enumerate(roBERTa.roberta.encoder.layer):
+            if i < len(roBERTa.roberta.encoder.layer) - 5:
+                for param in layer.parameters():
+                    param.requires_grad = False
+
+    else:
+        
+        print("Incompatible --text argument. Please choose 'english' or 'multi'")
+        return
+
+    if image == 'densenet':
+
+        image_model = models.densenet169(weights = None)
+        image_model.classifier = nn.Linear(densenet.classifier.in_features, 27)
+        image_model.load_state_dict(torch.load('models/densenet_model_weights.pth',
+                                            weights_only = True))
+
+        for param in image_model.parameters():
+            param.requires_grad = False
+
+        image_model = nn.Sequential(*list(image_model.children())[:-1],
+                                 nn.AdaptiveAvgPool2d((1, 1)))
+
+    elif image == 'resnet':
+
+        image_model = models.resnet152(weights = None)
+        image_model. fc = nn.Linear(model.fc.in_features, 27)
+        image_model.load_state_dict(torch.load('models/resnet_model_weights.pth',
+                                            weights_only = True))
+
+        for param in image_model.parameters():
+            param.requires_grad = False
+
+        image_model = nn.Sequential(*list(image_model.children())[:-1],
+                                 nn.AdaptiveAvgPool2d((1, 1)))
+
+    else:
+        
+        print("Incompatible --image argument. Please choose 'densenet' or 'resnet'")
+        return
 
     labels = training['labels']
 
@@ -68,9 +175,24 @@ def train_multimodal_model():
                              std = [0.229, 0.224, 0.225])
         ])
 
-    tokenizer = AutoTokenizer.from_pretrained('xlm-roberta-base')
     workers = os.cpu_count() // 2
 
+    training = training.iloc[0:5]
+    validation = validation.iloc[0:5]
+
+    training_data = MultimodalData(training, img_dir = img_dir, transform = training_transforms,
+                                   tokenizer = tokenizer)
+    training_loader = DataLoader(training_data, batch_size = 5, shuffle = True,
+                                 collate_fn = multimodal_collate,
+                                 num_workers = workers, pin_memory = True)
+    validation_data = MultimodalData(validation, img_dir = img_dir, transform = validation_transforms,
+                                     tokenizer = tokenizer)
+    validation_loader = DataLoader(validation_data, batch_size = 5, shuffle = False,
+                                   collate_fn = multimodal_collate,
+                                   num_workers = workers, pin_memory = True)
+
+
+    """
     training_data = MultimodalData(training, img_dir = img_dir, transform = training_transforms,
                                    tokenizer = tokenizer)
     training_loader = DataLoader(training_data, batch_size = 64, shuffle = True,
@@ -81,30 +203,11 @@ def train_multimodal_model():
     validation_loader = DataLoader(validation_data, batch_size = 64, shuffle = False,
                                    collate_fn = multimodal_collate,
                                    num_workers = workers, pin_memory = True)
+    """
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    densenet = models.densenet169(weights = None)
-    densenet.classifier = nn.Linear(densenet.classifier.in_features, 27)
-    densenet.load_state_dict(torch.load('models/densenet_model_weights.pth',
-                                        weights_only = True))
-
-    for param in densenet.parameters():
-        param.requires_grad = False
-
-    densenet = nn.Sequential(*list(densenet.children())[:-1],
-                             nn.AdaptiveAvgPool2d((1, 1)))
-
-    roBERTa = AutoModelForSequenceClassification.from_pretrained('xlm-roberta-base',
-                                                               num_labels = 27)
-    roBERTa.load_state_dict(torch.load('models/roBERTa_multi_model_weights.pth', weights_only = True))
-
-    for i, layer in enumerate(roBERTa.roberta.encoder.layer):
-        if i < len(roBERTa.roberta.encoder.layer) - 5:
-            for param in layer.parameters():
-                param.requires_grad = False
-
-    model = MultimodalModel(roBERTa, densenet)
+    model = MultimodalModel(text_model, image_model)
     model = model.to(device)
 
     optimizer = optim.Adam(model.parameters(), lr = 1e-4, betas = (0.9, 0.999),
@@ -205,14 +308,23 @@ def train_multimodal_model():
 
         scheduler.step(val_loss)
 
-    model.load_state_dict(early_stopping.best_f1_model)
-    torch.save(model.state_dict(), f'models/roBERTa_multi+densenet_model_weights.pth')
+    """
 
-    safe_saver(history, 'metrics/roBERTa_multi+densenet_performance.pkl')
+    model.load_state_dict(early_stopping.best_f1_model)
+    torch.save(model.state_dict(), f'models/{text}+{image}_model_weights.pth')
+
+    safe_saver(history, 'metrics/{text}+{image}_performance.pkl')
 
     print('Multimodal model and training metrics saved.')
 
+    """
+    
 if __name__ == '__main__':
-    train_multimodal_model()
+    parser = argparse.ArgumentParser(description = 'Train multimodal model.')
+    parser.add_argument('--text', type = str, required = True, help = 'either english or multi')
+    parser.add_argument('--img', type = str, required = True, help = 'either densenet or resnet')
+
+    args = parser.parse_args()
+    train_multimodal_model(args.text, args.cnn)
 
     

@@ -6,10 +6,18 @@ import time
 import text_functions as textfunc
 
 def format_data():
-
+    """
+    this loads in the raw data and perfoms a wide variety of formatting,
+    including getting rid of HTML tags, detecting the language,
+    translating to English, and finding duplicate data. This script takes
+    quite a long time to run because it has to load and translate a
+    large amount of text. For a complete understanding of the filtering
+    processed, see the text_functions script. Plots distributions of languages
+    and duplicates.
+    """
     df_X = pd.read_csv('data/raw/X_train.csv', index_col = 0, encoding = 'utf8')
     df_Y = pd.read_csv('data/raw/y_train.csv', index_col = 0, encoding = 'utf8')
-    df = pd.concat([df_X, df_Y[['prdtypecode']] ], axis=1)
+    df = pd.concat([df_X, df_Y[['prdtypecode']] ], axis = 1)
     df['initial_index'] = df.index
 
     df['description'] = df['description'].fillna(str())

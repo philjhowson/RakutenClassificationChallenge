@@ -10,7 +10,10 @@ from image_functions import plot_components, compute_image_hash, image_processin
 from text_functions import safe_loader
 
 def format_data():
-
+    """
+    loads in the data, takes a random selection of the data, and
+    displays the images and saves them.
+    """
     X = pd.read_csv('data/raw/X_train.csv', index_col = 0)
     y = pd.read_csv('data/raw/y_train.csv', index_col = 0)
 
@@ -37,12 +40,10 @@ def format_data():
     plt.tight_layout();
     plt.savefig('images/image_samples.png')
 
-
     """
     Resamples 30 images of each datapoint for LLE - a dimension reduction technique - that can help
     visualize differences between classes.
     """
-
     min_count = data['target'].value_counts().min()
 
     equal_data = pd.concat([
@@ -59,7 +60,6 @@ def format_data():
     """
     Flattens all the images to a 1D array for LLE.
     """
-
     images = []
 
     for index, item in enumerate(subset_data['image']):
@@ -77,7 +77,6 @@ def format_data():
     """
     this takes the flattened dataframe and reshapes it to 500 x 500 x 3.
     """
-
     image_height, image_width, image_channels = 500, 500, 3
     reshaped_images = images_flattened.reshape((-1, image_height, image_width, image_channels))
 

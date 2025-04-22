@@ -4,6 +4,10 @@ import json
 from text_functions import safe_saver
 
 def create_train_test_split():
+    """
+    simple function to extract the indices for the training, validation,
+    and test sets to ensure no data leakage.
+    """
 
     data = pd.read_csv('data/raw/y_train.csv', index_col = 0)
 

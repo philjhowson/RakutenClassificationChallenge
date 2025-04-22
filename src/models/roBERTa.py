@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 import torch.optim as optim
-from transformers import RobertaForSequenceClassification
+from transformers import RobertaTokenizer, RobertaForSequenceClassification
 from sklearn.utils.class_weight import compute_class_weight
 from sklearn.metrics import f1_score
 from datasets import Dataset
@@ -12,22 +12,24 @@ import numpy as np
 
 def train_roBERTa():
 
-    training = pd.read_csv('data/processed/train_text.csv')
-    validation = pd.read_csv('data/processed/validation_text.csv')
+    tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
+
+    training = pd.read_csv('data/processed/train_text.csv').dropna()
+    validation = pd.read_csv('data/processed/validation_text.csv').dropna()
 
     train_dataset = Dataset.from_pandas(training)
     validation_dataset = Dataset.from_pandas(validation)
 
     train_dataset = train_dataset.map(lambda x : tokenize_function(x, column = 'filtered_designation',
-                                                                   length = 128, language = 'english'),
+                                                                   tokenizer = tokenizer, length = 128),
                                       batched = True, num_proc = 4)
     validation_dataset = validation_dataset.map(lambda x : tokenize_function(x, column = 'filtered_designation',
-                                                                   length = 128, language = 'english'),
+                                                                   tokenizer = tokenizer, length = 128),
                                                 batched = True, num_proc = 4)
     train_dataset.set_format(type = 'torch', columns = ['input_ids', 'attention_mask', 'labels'])
     validation_dataset.set_format(type = 'torch', columns = ['input_ids', 'attention_mask', 'labels'])
-    training_loader = DataLoader(train_dataset, batch_size = 128, shuffle = True)
-    validation_loader = DataLoader(validation_dataset, batch_size = 128, shuffle = False)
+    training_loader = DataLoader(train_dataset, batch_size = 64, shuffle = True)
+    validation_loader = DataLoader(validation_dataset, batch_size = 64, shuffle = False)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -58,7 +60,7 @@ def train_roBERTa():
     weights = torch.tensor(sklearn_weights, dtype = torch.float32, device = device)
     criterion = nn.CrossEntropyLoss(weight = weights)
 
-    epochs = 100
+    epochs = 30
 
     history = {'loss': [], 'f1': [], 'gradient': [],
                'val_loss': [], 'val_f1': []}

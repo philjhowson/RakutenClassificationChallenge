@@ -37,6 +37,11 @@ class ImageDataset(Dataset):
         return image, label
 
 def resizing(img, size):
+    """
+    args:
+        img: expects an img.
+        size: takes one int, and returns an image of size x size.
+    """
     img_array = np.array(img)
     """
     this is what filters out the color specifications. I lowered it as much as a could for good results while still
@@ -101,7 +106,18 @@ def resizing(img, size):
     return Image.fromarray(new_image)
 
 class EarlyStopping:
+    """
+    args:
+        patience: how many epochs should go by without loss decreasing
+            before stopping is triggered. Default is 5.
+        f1_patience: how many epochs should go by without f1 decreasing
+            before stopping is triggered. Default is 10.
+    """
     def __init__(self, patience = 5, f1_patience = 10):
+        """
+        initializes the patience, f1_patience, and variables to store
+        best_loss, best_f1, counter, f1_counter, and the best_f1_model.
+        """
         self.patience = patience
         self.f1_patience = f1_patience
         self.best_loss = float('inf')
@@ -111,7 +127,11 @@ class EarlyStopping:
         self.best_f1_model = None
 
     def __call__(self, val_loss, f1_score, model):
-        
+        """
+        the call which checks current loss and f1_score against
+        current bests and either increases the counter(s) and/or
+        saves the model and resets the relevant loss/f1_counter.
+        """
         if val_loss < self.best_loss:
             self.best_loss = val_loss
             self.counter = 0
