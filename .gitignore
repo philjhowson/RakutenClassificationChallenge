@@ -7,7 +7,6 @@ models/
 notebooks/
 references/
 reports/
-streamlit/
 streamlitApp/
 venv/
 package_maker.py
