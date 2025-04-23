@@ -14,16 +14,24 @@ import pandas as pd
 import json
 import argparse
 
-
-def resize_image(img):
+def resize_image_224(img):
     return resizing(img, 224)
+def resize_image_300(img):
+    return resizing(img, 300)
 
-def evaluate_model(cnn = None):
+def evaluate_model(image = None):
     """
     this function imports a trained model and then evaluates it using
     f1 metrics, creating an image of training history, and also creates
     a gradcam image.
     """
+
+    if image == 'densenet':
+        size = 224
+        resize_fn = resize_image_224
+    elif image == 'resnet':
+        size = 300
+        resize_fn = resize_image_300
 
     """
     loads in the previously created test split, and then converts all the
@@ -47,16 +55,16 @@ def evaluate_model(cnn = None):
     img_dir = 'data/images/image_train/'
 
     test_transform = transforms.Compose([
-        transforms.Lambda(resize_image),
+        transforms.Lambda(resize_fn),
         transforms.ToTensor(),
-        transforms.Normalize(mean = [0.485, 0.456, 0.406],
-                             std = [0.229, 0.224, 0.225])
-        ])
+        transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                             std=[0.229, 0.224, 0.225])
+    ])
 
     test_data = ImageDataset(categories = test, img_dir = img_dir,
                              transform = test_transform)
 
-    test_loader = DataLoader(test_data, batch_size = 256, shuffle = False,
+    test_loader = DataLoader(test_data, batch_size = 128, shuffle = False,
                              num_workers = 4)
 
     """
@@ -65,7 +73,7 @@ def evaluate_model(cnn = None):
     needed for gradcam. Moves the device to the GPU if a GPU exists.
     """
 
-    if cnn == 'resnet':
+    if image == 'resnet':
 
         model = models.resnet152(weights = None)
         model.fc = nn.Linear(model.fc.in_features, 27)
@@ -78,7 +86,7 @@ def evaluate_model(cnn = None):
         for param in model.layer4.parameters():
             param.requires_grad = True
 
-    elif cnn == 'densenet':
+    elif image == 'densenet':
 
         model = models.densenet169(weights = None)
         model.classifier = nn.Linear(model.classifier.in_features, 27)
@@ -94,8 +102,7 @@ def evaluate_model(cnn = None):
             param.requires_grad = True
 
     else:
-        
-        print("Incompatible -cnn argument. Please choose 'densenet' or 'resnet'")
+        print("Incompatible --image argument. Please choose 'densenet' or 'resnet'")
         return
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -123,9 +130,9 @@ def evaluate_model(cnn = None):
     test_f1 = f1_score(test_labs, test_preds, average = 'weighted')
     test_report = classification_report(test_labs, test_preds, output_dict = True)
 
-    safe_saver(test_report, f'metrics/{cnn}_classification_report.pkl')
+    safe_saver(test_report, f'metrics/{image}_classification_report.pkl')
 
-    history = safe_loader(f'metrics/{cnn}_performance.pkl')
+    history = safe_loader(f'metrics/{image}_performance.pkl')
 
     values = [max(history['f1']), max(history['val_f1']), test_f1]
     labels = ['Training F1', 'Validation F1', 'Test F1']
@@ -149,7 +156,7 @@ def evaluate_model(cnn = None):
     plt.title('Training, Validation, and Test F1-Scores')
     plt.tight_layout()
 
-    plt.savefig(f'images/{cnn}_f1_scores.png')
+    plt.savefig(f'images/{image}_f1_scores.png')
 
     training_items = ['loss', 'f1', 'gradient']
     validation_items = ['val_loss', 'val_f1']
@@ -184,7 +191,7 @@ def evaluate_model(cnn = None):
         axes.legend()
 
     plt.tight_layout()
-    plt.savefig(f'images/{cnn}_training_history.png')
+    plt.savefig(f'images/{image}_training_history.png')
 
     """
     creates a gradcam object and extracts the feature maps for a set of
@@ -192,17 +199,15 @@ def evaluate_model(cnn = None):
     (probability) and the actual label to a list for plotting.
     """
 
-    if cnn == 'resnet':
+    if image == 'resnet':
 
         grad_cam = GradCAM(model, model.layer4[-1].conv3)
 
-    if cnn == 'densenet':
+    if image == 'densenet':
 
         grad_cam = GradCAM(model, model.features.denseblock4.denselayer32.conv2)
 
-    #sample_index = [7150, 6752, 2916, 1410, 7820, 4598, 4928, 1084, 4725, 3365]
-    sample_index = random_indices = np.random.choice(len(test), size = 10, replace = False)
-    print(sample_index)
+    sample_index = [1088, 5203, 3787, 3435, 3188, 7166, 5829, 8137,  711, 2100]
     sample_images = test['image'].iloc[sample_index].values
     labels = image_labels.iloc[sample_index].values
 
@@ -232,7 +237,7 @@ def evaluate_model(cnn = None):
 
     grad_cam.remove_hooks()
 
-    transform = transforms.Compose([transforms.Lambda(resize_image),
+    transform = transforms.Compose([transforms.Lambda(resize_fn),
                                     transforms.ToTensor()])
 
     fig, ax = plt.subplots(2, 5, figsize = (20, 10))
@@ -255,32 +260,28 @@ def evaluate_model(cnn = None):
         activation_map = activation_map / activation_map.max()
         activation_map = activation_map.unsqueeze(0).unsqueeze(0)
 
-        activation_map_resized = F.interpolate(activation_map, size = (224, 224),
+        activation_map_resized = F.interpolate(activation_map, size = (size, size),
                                                mode = 'bilinear', align_corners = False)
 
         heatmap = plt.cm.jet(activation_map_resized.squeeze().cpu().numpy())
         heatmap = np.delete(heatmap, 3, axis = -1)
 
         heatmap /= (heatmap.max() + 1e-8)
-        image = img.permute(1, 2, 0).numpy()
+        images = img.permute(1, 2, 0).numpy()
 
-        overlayed_image = (image * (1 - 0.5) * 255 + heatmap * 0.5 * 255).astype(np.uint8)
+        overlayed_image = (images * (1 - 0.5) * 255 + heatmap * 0.5 * 255).astype(np.uint8)
 
         axes.imshow(overlayed_image)
         axes.set_title(f"Predicted: {predicted_labels[index]} ({round(probability[index] * 100, 2)}%),\n Actual: {labels[index]}")
-
+        axes.axis('off')
+        
     plt.tight_layout()
 
-    plt.savefig(f'images/{cnn}_grad_cam.png')
+    plt.savefig(f'images/{image}_grad_cam.png')
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description = 'Evaluate a trained model.')
-    parser.add_argument('--cnn', type = str, required = True, help = 'either resnet or densenet')
+    parser.add_argument('--image', type = str, required = True, help = 'either resnet or densenet')
 
     args = parser.parse_args()
-    evaluate_model(args.cnn)
-    
-
-        
-
-    
+    evaluate_model(args.image)

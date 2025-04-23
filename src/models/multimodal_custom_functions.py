@@ -74,7 +74,7 @@ class MultimodalModel(nn.Module):
         self.txt = txt_model
         self.img = img_model
         self.classifier = nn.Sequential(
-            nn.Linear(2432, 1024),
+            nn.Linear(2816, 1024),
             nn.BatchNorm1d(1024),
             nn.ReLU(),
             nn.Dropout(0.4),

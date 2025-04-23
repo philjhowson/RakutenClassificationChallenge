@@ -13,11 +13,19 @@ from text_custom_functions import safe_loader, safe_saver
 from multimodal_custom_functions import MultimodalData, multimodal_collate, MultimodalModel
 import os
 import json
+import argparse
 
-def resize_image(img):
+def resize_image_224(img):
     return resizing(img, 224)
+def resize_image_300(img):
+    return resizing(img, 300)     
 
 def train_multimodal_model(text = None, image = None):
+
+    if image == 'densenet':
+        resize_fn = resize_image_224
+    elif image == 'resnet':
+        resize_fn = resize_image_300
 
     """
     sets the image folder and then loads the data and the indices for the
@@ -27,12 +35,6 @@ def train_multimodal_model(text = None, image = None):
     img_dir = 'data/images/image_train/'
 
     data = pd.read_parquet('data/processed/translated_text.parquet')
-
-    with open('data/processed/test_label_dictionary.json', 'r') as f:
-        labels = json.load(f)
-
-    labels = {int(key): value for key, value in labels.items()}
-    data['labels'] = data['labels'].map(labels)
 
     train_indices = safe_loader('data/processed/train_indices.pkl')
     val_indices = safe_loader('data/processed/val_indices.pkl')
@@ -50,13 +52,13 @@ def train_multimodal_model(text = None, image = None):
 
         training = pd.read_csv('data/processed/train_text.csv')
         training['image_name'] = train['image_name'] + '.jpg'
-        training = training[['image_name', 'designation_filtered', 'labels']]
+        training = training[['image_name', 'designation_filtered', 'labels']].dropna()
         validation = pd.read_csv('data/processed/validation_text.csv')
         validation['image_name'] = val['image_name'] + '.jpg'
-        validation = validation[['image_name', 'designation_filtered', 'labels']]        
+        validation = validation[['image_name', 'designation_filtered', 'labels']].dropna()        
         test = pd.read_csv('data/processed/test_text.csv')
-        test['image_name'] = test['image_name'] + '.jpg'
-        test = test[['image_name', 'designation_filtered', 'labels']]  
+        test['image_name'] = testing['image_name'] + '.jpg'
+        test = test[['image_name', 'designation_filtered', 'labels']].dropna()
 
         training.to_csv('data/processed/train_english_multimodal.csv', index = False)
         validation.to_csv('data/processed/validation_english_multimodal.csv', index = False)
@@ -66,13 +68,9 @@ def train_multimodal_model(text = None, image = None):
         text_model = RobertaForSequenceClassification.from_pretrained('roberta-base',  num_labels = 27,
                                                                attn_implementation = 'eager')
 
-        for i, layer in enumerate(text_model.roberta.encoder.layer):
-            if i < len(text_model.roberta.encoder.layer) - 1:
-                for param in layer.parameters():
+        for layer in text_model.roberta.encoder.layer:
+            for param in layer.parameters():
                     param.requires_grad = False
-            else:
-                for param in layer.parameters():
-                    param.requires_grad = True
 
         text_model.load_state_dict(torch.load('models/roBERTa_model_weights.pth',
                                          weights_only = True))
@@ -83,13 +81,13 @@ def train_multimodal_model(text = None, image = None):
 
         training = pd.read_csv('data/processed/train_multilang.csv')
         training['image_name'] = train['image_name'] + '.jpg'
-        training = training[['image_name', 'filtered_text', 'labels']]
+        training = training[['image_name', 'filtered_text', 'labels']].dropna()
         validation = pd.read_csv('data/processed/validation_multilang.csv')
         validation['image_name'] = val['image_name'] + '.jpg'
-        validation = validation[['image_name', 'filtered_text', 'labels']]        
+        validation = validation[['image_name', 'filtered_text', 'labels']].dropna()       
         test = pd.read_csv('data/processed/test_multilang.csv')
-        test['image_name'] = test['image_name'] + '.jpg'
-        test = test[['image_name', 'filtered_text', 'labels']]  
+        test['image_name'] = testing['image_name'] + '.jpg'
+        test = test[['image_name', 'filtered_text', 'labels']].dropna()
 
         training.to_csv('data/processed/train_multi_multimodal.csv', index = False)
         validation.to_csv('data/processed/validation_multi_multimodal.csv', index = False)
@@ -100,23 +98,14 @@ def train_multimodal_model(text = None, image = None):
                                                                num_labels = 27,
                                                                attn_implementation = 'eager')
 
-        for i, layer in enumerate(text_model.roberta.encoder.layer):
-            if i < len(text_model.roberta.encoder.layer) - 1:
-                for param in layer.parameters():
+        for layer in text_model.roberta.encoder.layer:
+            for param in layer.parameters():
                     param.requires_grad = False
-            else:
-                for param in layer.parameters():
-                    param.requires_grad = True
 
         text_model.load_state_dict(torch.load('models/roBERTa_multi_model_weights.pth',
                                          weights_only = True))
 
         text = 'roBERTa_multi'
-
-        for i, layer in enumerate(roBERTa.roberta.encoder.layer):
-            if i < len(roBERTa.roberta.encoder.layer) - 5:
-                for param in layer.parameters():
-                    param.requires_grad = False
 
     else:
         
@@ -126,7 +115,7 @@ def train_multimodal_model(text = None, image = None):
     if image == 'densenet':
 
         image_model = models.densenet169(weights = None)
-        image_model.classifier = nn.Linear(densenet.classifier.in_features, 27)
+        image_model.classifier = nn.Linear(image_model.classifier.in_features, 27)
         image_model.load_state_dict(torch.load('models/densenet_model_weights.pth',
                                             weights_only = True))
 
@@ -139,7 +128,7 @@ def train_multimodal_model(text = None, image = None):
     elif image == 'resnet':
 
         image_model = models.resnet152(weights = None)
-        image_model. fc = nn.Linear(model.fc.in_features, 27)
+        image_model.fc = nn.Linear(image_model.fc.in_features, 27)
         image_model.load_state_dict(torch.load('models/resnet_model_weights.pth',
                                             weights_only = True))
 
@@ -157,7 +146,7 @@ def train_multimodal_model(text = None, image = None):
     labels = training['labels']
 
     training_transforms = transforms.Compose([
-        transforms.Lambda(resize_image),
+        transforms.Lambda(resize_fn),
         transforms.RandomVerticalFlip(p = 0.4),
         transforms.RandomHorizontalFlip(p = 0.4),
         transforms.RandomAffine(degrees = (-90, 90),
@@ -169,7 +158,7 @@ def train_multimodal_model(text = None, image = None):
         ])
 
     validation_transforms = transforms.Compose([
-        transforms.Lambda(resize_image),
+        transforms.Lambda(resize_fn),
         transforms.ToTensor(),
         transforms.Normalize(mean = [0.485, 0.456, 0.406],
                              std = [0.229, 0.224, 0.225])
@@ -177,22 +166,6 @@ def train_multimodal_model(text = None, image = None):
 
     workers = os.cpu_count() // 2
 
-    training = training.iloc[0:5]
-    validation = validation.iloc[0:5]
-
-    training_data = MultimodalData(training, img_dir = img_dir, transform = training_transforms,
-                                   tokenizer = tokenizer)
-    training_loader = DataLoader(training_data, batch_size = 5, shuffle = True,
-                                 collate_fn = multimodal_collate,
-                                 num_workers = workers, pin_memory = True)
-    validation_data = MultimodalData(validation, img_dir = img_dir, transform = validation_transforms,
-                                     tokenizer = tokenizer)
-    validation_loader = DataLoader(validation_data, batch_size = 5, shuffle = False,
-                                   collate_fn = multimodal_collate,
-                                   num_workers = workers, pin_memory = True)
-
-
-    """
     training_data = MultimodalData(training, img_dir = img_dir, transform = training_transforms,
                                    tokenizer = tokenizer)
     training_loader = DataLoader(training_data, batch_size = 64, shuffle = True,
@@ -203,14 +176,13 @@ def train_multimodal_model(text = None, image = None):
     validation_loader = DataLoader(validation_data, batch_size = 64, shuffle = False,
                                    collate_fn = multimodal_collate,
                                    num_workers = workers, pin_memory = True)
-    """
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     model = MultimodalModel(text_model, image_model)
     model = model.to(device)
 
-    optimizer = optim.Adam(model.parameters(), lr = 1e-4, betas = (0.9, 0.999),
+    optimizer = optim.Adam(model.parameters(), lr = 1e-2, betas = (0.9, 0.999),
                            eps = 1e-8, weight_decay = 1e-4)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode = 'min',
                                                      factor = 0.1, patience = 3)
@@ -308,23 +280,19 @@ def train_multimodal_model(text = None, image = None):
 
         scheduler.step(val_loss)
 
-    """
-
     model.load_state_dict(early_stopping.best_f1_model)
     torch.save(model.state_dict(), f'models/{text}+{image}_model_weights.pth')
 
     safe_saver(history, 'metrics/{text}+{image}_performance.pkl')
 
     print('Multimodal model and training metrics saved.')
-
-    """
     
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description = 'Train multimodal model.')
     parser.add_argument('--text', type = str, required = True, help = 'either english or multi')
-    parser.add_argument('--img', type = str, required = True, help = 'either densenet or resnet')
+    parser.add_argument('--image', type = str, required = True, help = 'either densenet or resnet')
 
     args = parser.parse_args()
-    train_multimodal_model(args.text, args.cnn)
+    train_multimodal_model(args.text, args.image)
 
     
