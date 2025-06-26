@@ -34,7 +34,7 @@ The Streamlit app can be found here:
     ├── images # contains output images from data exploration and model evaluation
     ├── metrics # output metrics for model training and evaluation
     ├── models # output folder for model saves, this is not on github due to model sizes
-    ├── src # contains source code for exploration, not stored on GitHub due to size limitations
+    ├── src
     │   ├── data # code for data formatting
     │   │    ├── create_train_test_split.py # creates the training, test, and validation indicies
     │   │    ├── image_data.py # describes and formats images
